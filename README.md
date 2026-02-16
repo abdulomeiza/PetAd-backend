@@ -302,12 +302,6 @@ SMTP_USER=
 SMTP_PASS=
 ```
 
-> **⚠️ CRITICAL SECURITY WARNING:**
-> - Never commit `.env` files to version control
-> - Use secrets managers (AWS Secrets Manager, Vault) in production
-> - Rotate `STELLAR_SECRET_KEY` regularly
-> - `JWT_SECRET` should be at least 32 random characters
-
 **Create `.env` from example:**
 
 ```bash
@@ -831,39 +825,6 @@ docker-compose up -d --build
 | `npm run seed` | Seed database with sample data |
 
 ---
-
-## 🧪 Testing
-
-### Run Tests
-
-```bash
-# Unit tests
-npm test
-
-# E2E tests
-npm run test:e2e
-
-# Coverage report
-npm run test:cov
-```
-
-### Test Structure
-
-```
-test/
-├── unit/
-│   ├── adoption/
-│   ├── custody/
-│   └── escrow/
-├── integration/
-│   └── adoption-flow.e2e-spec.ts
-└── mocks/
-    ├── stellar-sdk.mock.ts
-    └── prisma.mock.ts
-```
-
----
-
 ## 🔒 Security
 
 ### Security Measures
@@ -990,26 +951,12 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 - Built with ❤️ for transparent, trustworthy pet adoption
 - Powered by [Stellar](https://stellar.org) blockchain technology
 - Inspired by the mission to connect pets with loving homes
-
----
-
-## 📞 Support
-
-For questions, issues, or feature requests:
-
-- **GitHub Issues:** [github.com/petad/petad-core/issues](https://github.com/petad/petad-core/issues)
-- **Email:** dev@petad.com
-- **Discord:** [Join our developer community](https://discord.gg/petad-dev)
-- **Documentation:** [docs.petad.com](https://docs.petad.com)
-
 ---
 
 ## 🔗 Related Projects
 
-- **Frontend:** [petad-frontend](https://github.com/petad/petad-frontend) - React web application
-- **Stellar SDK:** [petad-chain](https://github.com/petad/petad-chain) - Blockchain SDK
-- **Mobile App:** [petad-mobile](https://github.com/petad/petad-mobile) - React Native app
-- **Documentation:** [petad-docs](https://github.com/petad/petad-docs) - Technical docs
+- **Frontend:** [petad-frontend](https://github.com/amina69/PetAd-Frontend) - React web application
+- **Stellar SDK:** [petad-chain](https://github.com/amina69/petad-stellar) - Blockchain SDK
 
 ---
 
