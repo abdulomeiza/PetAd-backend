@@ -67,13 +67,20 @@ refactor(escrow): simplify transaction logic
 
 ## 🔀 Pull Request Process
 
-1. **Create a branch** from `develop`
+1. **Create a branch** from `main`
 2. **Make your changes**
 3. **Run tests:** `npm test`
 4. **Lint code:** `npm run lint`
 5. **Commit** following conventional commits
 6. **Push** to your fork
-7. **Open a PR** to `develop` branch
+7. **Open a PR** to `main` branch
+8. **Link related issue**
+9. **Example:** Closes #12
+
+
+
+Fill out the PR template completely
+
 
 ### PR Checklist
 
@@ -95,15 +102,6 @@ npm run test:e2e      # E2E tests
 **Minimum coverage:** 80% for new code
 
 ---
-
-## 📚 Documentation
-
-- Add JSDoc comments for public APIs
-- Update README if adding features
-- Update Swagger decorators for endpoints
-
----
-
 ## 🐛 Reporting Issues
 
 - Use issue templates
