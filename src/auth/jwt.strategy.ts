@@ -1,0 +1,27 @@
+import { Injectable } from '@nestjs/common';
+import { PassportStrategy } from '@nestjs/passport';
+import { ExtractJwt, Strategy } from 'passport-jwt';
+import { ConfigService } from '@nestjs/config';
+
+interface JwtPayload {
+  sub: string;
+  email: string;
+  role: string;
+}
+
+@Injectable()
+export class JwtStrategy extends PassportStrategy(Strategy) {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+  constructor(config: ConfigService) {
+    super({
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(), // eslint-disable-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      ignoreExpiration: false,
+      secretOrKey: config.get<string>('JWT_SECRET') ?? '', // eslint-disable-line @typescript-eslint/no-unsafe-assignment
+    });
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  validate(payload: JwtPayload) {
+    return { userId: payload.sub, email: payload.email, role: payload.role };
+  }
+}
