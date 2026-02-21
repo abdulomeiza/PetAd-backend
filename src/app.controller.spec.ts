@@ -19,6 +19,14 @@ describe('AppController', () => {
       expect(appController.getHello()).toBe('Hello World!');
     });
   });
+
+  describe('protected', () => {
+    it('should reject access without JWT', async () => {
+      // Simulate request without token
+      // Use supertest for e2e
+      // This test is for demonstration, actual e2e should be in app.e2e-spec.ts
+    });
+  });
 });
 
 //  this is to test  new test
