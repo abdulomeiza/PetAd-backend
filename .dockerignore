@@ -1,8 +1,8 @@
-# node_modules
-# dist
-# .git
-# .gitignore
+node_modules
+dist
+.git
+.gitignore
 # Dockerfile
 # docker-compose.yml
-# .env
-# *.log
+.env
+*.log
