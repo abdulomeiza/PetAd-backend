@@ -23,14 +23,11 @@ enum PetSpecies {
   OTHER
 }
 
-enum PetStatus {
-  AVAILABLE
-  PENDING
-  ADOPTED
-  IN_CUSTODY
-}
+
+
 
 enum AdoptionStatus {
+  REQUESTED
   PENDING
   APPROVED
   ESCROW_FUNDED
@@ -39,12 +36,21 @@ enum AdoptionStatus {
   CANCELLED
 }
 
+
 enum CustodyStatus {
   ACTIVE
-  COMPLETED
+  RETURNED
   CANCELLED
-  EXPIRED
+  VIOLATION
 }
+
+enum CustodyType {
+  OWNER
+  TEMPORARY
+  SHELTER
+}
+
+
 
 enum EscrowStatus {
   CREATED
@@ -54,19 +60,28 @@ enum EscrowStatus {
   DISPUTED
 }
 
+
+enum EventEntityType {
+  USER
+  PET
+  ADOPTION
+  CUSTODY
+  ESCROW
+}
+
+
 enum EventType {
   USER_REGISTERED
-  PET_LISTED
+  PET_REGISTERED
   ADOPTION_REQUESTED
   ADOPTION_APPROVED
-  ADOPTION_REJECTED
   ADOPTION_COMPLETED
+  CUSTODY_STARTED
+  CUSTODY_RETURNED
   ESCROW_CREATED
   ESCROW_FUNDED
   ESCROW_RELEASED
-  ESCROW_REFUNDED
-  CUSTODY_STARTED
-  CUSTODY_COMPLETED
+  TRUST_SCORE_UPDATED
 }
 
 // ─── Models ──────────────────────────────────────────────
@@ -79,62 +94,69 @@ model User {
   lastName  String   @map("last_name")
   role      UserRole @default(USER)
 
+  trustScore Float   @default(50)
+
   stellarPublicKey String? @unique @map("stellar_public_key")
   avatarUrl        String? @map("avatar_url")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  pets              Pet[]
-  adoptionRequests  AdoptionRequest[]  @relation("Adopter")
-  receivedRequests  AdoptionRequest[]  @relation("Owner")
-  custodiesAsOwner  CustodyAgreement[] @relation("CustodyOwner")
-  custodiesAsKeeper CustodyAgreement[] @relation("CustodyKeeper")
+  petsOwned   Pet[] @relation("PetOwner")
+
+  adoptionsAsAdopter Adoption[] @relation("Adopter")
+  adoptionsAsOwner   Adoption[] @relation("Owner")
+
+  custodiesHeld Custody[] @relation("CustodyHolder")
+
+  events EventLog[] @relation("ActorEvents")
 
   @@map("users")
 }
 
+
+
 model Pet {
-  id          String    @id @default(uuid())
+  id          String      @id @default(uuid())
   name        String
   species     PetSpecies
   breed       String?
   age         Int?
   description String?
-  imageUrl    String?   @map("image_url")
-  status      PetStatus @default(AVAILABLE)
+  imageUrl    String?     @map("image_url")
 
-  ownerId String @map("owner_id")
-  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  currentOwnerId String?  @map("current_owner_id")
+  currentOwner   User?    @relation("PetOwner", fields: [currentOwnerId], references: [id])
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  adoptionRequests   AdoptionRequest[]
-  custodyAgreements  CustodyAgreement[]
+  adoptions Adoption[]
+  custodies Custody[]
 
-  @@index([status])
   @@index([species])
-  @@index([ownerId])
+  @@index([currentOwnerId])
   @@map("pets")
 }
 
-model AdoptionRequest {
+
+model Adoption {
   id     String         @id @default(uuid())
-  status AdoptionStatus @default(PENDING)
+  status AdoptionStatus @default(REQUESTED)
   notes  String?
 
   petId String @map("pet_id")
   pet   Pet    @relation(fields: [petId], references: [id], onDelete: Cascade)
 
   adopterId String @map("adopter_id")
-  adopter   User   @relation("Adopter", fields: [adopterId], references: [id], onDelete: Cascade)
+  adopter   User   @relation("Adopter", fields: [adopterId], references: [id])
 
   ownerId String @map("owner_id")
-  owner   User   @relation("Owner", fields: [ownerId], references: [id], onDelete: Cascade)
+  owner   User   @relation("Owner", fields: [ownerId], references: [id])
 
-  escrowId String?        @unique @map("escrow_id")
-  escrow   EscrowAccount? @relation(fields: [escrowId], references: [id])
+  escrowId String?  @unique @map("escrow_id")
+  escrow   Escrow? @relation(fields: [escrowId], references: [id])
+  
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -142,66 +164,87 @@ model AdoptionRequest {
   @@index([status])
   @@index([adopterId])
   @@index([ownerId])
-  @@map("adoption_requests")
+  @@map("adoptions")
 }
 
-model CustodyAgreement {
-  id            String        @id @default(uuid())
-  status        CustodyStatus @default(ACTIVE)
-  depositAmount Decimal       @map("deposit_amount") @db.Decimal(12, 2)
-  startDate     DateTime      @map("start_date")
-  endDate       DateTime      @map("end_date")
-  terms         String?
+
+
+model Custody {
+  id       String        @id @default(uuid())
+  status   CustodyStatus @default(ACTIVE)
+  type     CustodyType
+
+  depositAmount Decimal? @db.Decimal(12, 2)
+
+  startDate DateTime @map("start_date")
+  endDate   DateTime?
 
   petId String @map("pet_id")
   pet   Pet    @relation(fields: [petId], references: [id], onDelete: Cascade)
 
-  ownerId String @map("owner_id")
-  owner   User   @relation("CustodyOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  holderId String @map("holder_id")
+  holder   User   @relation("CustodyHolder", fields: [holderId], references: [id])
 
-  keeperId String @map("keeper_id")
-  keeper   User   @relation("CustodyKeeper", fields: [keeperId], references: [id], onDelete: Cascade)
-
-  escrowId String?        @unique @map("escrow_id")
-  escrow   EscrowAccount? @relation(fields: [escrowId], references: [id])
+  escrowId String? @unique @map("escrow_id")
+  escrow   Escrow? @relation(fields: [escrowId], references: [id])
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([status])
-  @@index([ownerId])
-  @@index([keeperId])
-  @@map("custody_agreements")
+  @@index([holderId])
+  @@map("custodies")
 }
 
-model EscrowAccount {
-  id              String       @id @default(uuid())
-  stellarAccountId String      @unique @map("stellar_account_id")
-  transactionHash String?      @map("transaction_hash")
-  amount          Decimal      @db.Decimal(12, 2)
-  status          EscrowStatus @default(CREATED)
+
+model Escrow {
+  id String @id @default(uuid())
+
+  stellarPublicKey String @unique @map("stellar_public_key")
+  stellarSecretEncrypted String @map("stellar_secret_encrypted")
+
+  assetCode String @default("XLM") @map("asset_code")
+  assetIssuer String? @map("asset_issuer")
+
+  amount Decimal @db.Decimal(12, 2)
+
+  fundingTxHash  String? @map("funding_tx_hash")
+  releaseTxHash  String? @map("release_tx_hash")
+  refundTxHash   String? @map("refund_tx_hash")
+
+  requiredSignatures Int @default(2)
+
+  status EscrowStatus @default(CREATED)
+
+  adoption Adoption?
+  custody  Custody?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  adoptionRequest  AdoptionRequest?
-  custodyAgreement CustodyAgreement?
-
   @@index([status])
-  @@map("escrow_accounts")
+  @@map("escrows")
 }
 
 model EventLog {
-  id          String    @id @default(uuid())
-  type        EventType
-  aggregateId String    @map("aggregate_id")
-  payload     Json      @default("{}")
-  metadata    Json      @default("{}")
+  id          String           @id @default(uuid())
+  entityType  EventEntityType  @map("entity_type")
+  entityId    String           @map("entity_id")
+  eventType   EventType        @map("event_type")
+
+  actorId String? @map("actor_id")
+  actor   User?   @relation("ActorEvents", fields: [actorId], references: [id])
+
+  txHash      String? @map("tx_hash")
+  blockHeight Int?    @map("block_height")
+
+  payload  Json
+  metadata Json?
 
   createdAt DateTime @default(now()) @map("created_at")
 
-  @@index([type])
-  @@index([aggregateId])
+  @@index([entityType, entityId])
+  @@index([eventType])
   @@index([createdAt])
   @@map("event_logs")
 }
