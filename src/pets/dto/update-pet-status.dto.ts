@@ -4,6 +4,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
  * DTO for updating pet status
+ * new
  */
 export class UpdatePetStatusDto {
   @ApiProperty({
