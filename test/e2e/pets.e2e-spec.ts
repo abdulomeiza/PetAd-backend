@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import * as request from 'supertest';
-import { AppModule } from '../src/app.module';
-import { PrismaService } from '../src/prisma/prisma.service';
-import { PetStatus } from '../src/pets/enums/pet-status.enum';
-import { UserRole } from '@prisma/client';
+import request from 'supertest';
+import * as bcrypt from 'bcryptjs';
+import { AppModule } from '../../src/app.module';
+import { PrismaService } from '../../src/prisma/prisma.service';
+import { PetStatus, UserRole } from '../../src/common/enums';
 
 describe('Pet Status Lifecycle (E2E)', () => {
   let app: INestApplication;
@@ -34,11 +34,14 @@ describe('Pet Status Lifecycle (E2E)', () => {
     await prismaService.pet.deleteMany({});
     await prismaService.user.deleteMany({});
 
-    // Create test users
+    // Create users directly in database with proper roles
+    const hashedAdminPassword = await bcrypt.hash('Admin@123', 10);
+    const hashedUserPassword = await bcrypt.hash('User@123', 10);
+
     const adminUser = await prismaService.user.create({
       data: {
         email: 'admin@test.com',
-        password: 'hashedpassword',
+        password: hashedAdminPassword,
         firstName: 'Admin',
         lastName: 'User',
         role: UserRole.ADMIN,
@@ -48,12 +51,31 @@ describe('Pet Status Lifecycle (E2E)', () => {
     const regularUser = await prismaService.user.create({
       data: {
         email: 'user@test.com',
-        password: 'hashedpassword',
+        password: hashedUserPassword,
         firstName: 'Regular',
         lastName: 'User',
         role: UserRole.USER,
       },
     });
+
+    // Login to get JWT tokens
+    const adminLoginResponse = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({
+        email: 'admin@test.com',
+        password: 'Admin@123',
+      });
+
+    adminToken = adminLoginResponse.body.access_token;
+
+    const userLoginResponse = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({
+        email: 'user@test.com',
+        password: 'User@123',
+      });
+
+    userToken = userLoginResponse.body.access_token;
 
     // Create test pet
     const pet = await prismaService.pet.create({
@@ -70,16 +92,11 @@ describe('Pet Status Lifecycle (E2E)', () => {
     });
 
     petId = pet.id;
-
-    // In a real app, these would be obtained from the auth endpoints
-    // For testing purposes, we'll mock them
-    adminToken = 'mock-admin-token';
-    userToken = 'mock-user-token';
-  });
+  }, 30000);
 
   afterAll(async () => {
     await app.close();
-  });
+  }, 30000);
 
   describe('GET /pets/:id - View pet details', () => {
     it('should return pet with current status', async () => {
@@ -250,7 +267,7 @@ describe('Pet Status Lifecycle (E2E)', () => {
         });
 
       expect(response.status).toBe(403);
-      expect(response.body.message).toContain('ADMIN');
+      expect(response.body.message).toContain('administrators');
     });
   });
 
@@ -348,6 +365,12 @@ describe('Pet Status Lifecycle (E2E)', () => {
 
   describe('PATCH /pets/:id/status - Error Responses', () => {
     it('should return 400 with clear error message for invalid transition', async () => {
+      // Ensure pet is in ADOPTED status first (can't go to PENDING from here)
+      await prismaService.pet.update({
+        where: { id: petId },
+        data: { status: PetStatus.ADOPTED },
+      });
+
       const response = await request(app.getHttpServer())
         .patch(`/pets/${petId}/status`)
         .set('Authorization', `Bearer ${adminToken}`)

@@ -6,8 +6,7 @@ import {
 } from '@nestjs/common';
 import { PetsService } from '../pets.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PetStatus } from '@prisma/client';
-import { UserRole } from '@prisma/client';
+import { PetStatus, UserRole } from '../../common/enums';
 
 describe('PetsService - Status Lifecycle', () => {
   let service: PetsService;
@@ -406,4 +405,3 @@ describe('PetsService - Status Lifecycle', () => {
     });
   });
 });
-

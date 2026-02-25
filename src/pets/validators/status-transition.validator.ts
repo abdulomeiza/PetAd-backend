@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { PetStatus, UserRole } from '@prisma/client';
+import { PetStatus, UserRole } from '../../common/enums';
 
 /**
  * Pet Status Transition Validator
@@ -20,20 +20,20 @@ export class StatusTransitionValidator {
    */
   private static readonly ALLOWED_TRANSITIONS: Record<PetStatus, PetStatus[]> =
     {
-      AVAILABLE: ['PENDING', 'IN_CUSTODY'],
-      PENDING: ['ADOPTED', 'AVAILABLE'],
-      IN_CUSTODY: ['AVAILABLE'],
-      ADOPTED: [],
+      [PetStatus.AVAILABLE]: [PetStatus.PENDING, PetStatus.IN_CUSTODY],
+      [PetStatus.PENDING]: [PetStatus.ADOPTED, PetStatus.AVAILABLE],
+      [PetStatus.IN_CUSTODY]: [PetStatus.AVAILABLE],
+      [PetStatus.ADOPTED]: [],
     };
 
   private static readonly ADMIN_ONLY_TRANSITIONS: Record<
     PetStatus,
     PetStatus[]
   > = {
-    AVAILABLE: [],
-    PENDING: [],
-    IN_CUSTODY: [],
-    ADOPTED: ['AVAILABLE'], // Return adopted pet
+    [PetStatus.AVAILABLE]: [],
+    [PetStatus.PENDING]: [],
+    [PetStatus.IN_CUSTODY]: [],
+    [PetStatus.ADOPTED]: [PetStatus.AVAILABLE], // Return adopted pet
   };
 
   /**
@@ -92,7 +92,7 @@ export class StatusTransitionValidator {
     const adminOnlyTransitions =
       StatusTransitionValidator.ADMIN_ONLY_TRANSITIONS[currentStatus];
     if (adminOnlyTransitions && adminOnlyTransitions.includes(newStatus)) {
-      if (userRole === 'ADMIN') {
+      if (userRole === UserRole.ADMIN) {
         return true;
       }
       throw new BadRequestException(

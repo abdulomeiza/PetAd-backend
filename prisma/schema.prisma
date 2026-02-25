@@ -87,6 +87,17 @@ enum EventType {
   TRUST_SCORE_UPDATED
 }
 
+enum PetGender {
+  MALE
+  FEMALE
+}
+
+enum PetSize {
+  SMALL
+  MEDIUM
+  LARGE
+}
+
 // ─── Models ──────────────────────────────────────────────
 
 model User {
@@ -132,6 +143,9 @@ model Pet {
   description String?
   imageUrl    String?     @map("image_url")
   status      PetStatus   @default(AVAILABLE)
+
+  gender      PetGender?   // Optional gender field
+  size        PetSize?     // Optional size field
 
   currentOwnerId String?  @map("current_owner_id")
   currentOwner   User?    @relation("PetOwner", fields: [currentOwnerId], references: [id])

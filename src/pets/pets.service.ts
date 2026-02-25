@@ -5,7 +5,9 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StatusTransitionValidator } from './validators/status-transition.validator';
-import { UserRole, PetStatus } from '@prisma/client';
+import { UserRole, PetStatus } from '../common/enums';
+import { CreatePetDto } from './dto/create-pet.dto';
+import { UpdatePetDto } from './dto/update-pet.dto';
 
 /**
  * Pet Service
@@ -84,8 +86,12 @@ export class PetsService {
   ) {
     const pet = await this.getPetById(petId);
 
-    // Validate the transition
-    StatusTransitionValidator.validate(pet.status, newStatus, userRole);
+    // Validate the transition (cast Prisma status to our enum)
+    StatusTransitionValidator.validate(
+      pet.status as PetStatus,
+      newStatus,
+      userRole,
+    );
 
     // Additional authorization checks for sensitive transitions
     this.authorizeStatusUpdate(pet, newStatus, userId, userRole);
@@ -101,7 +107,13 @@ export class PetsService {
     });
 
     // Log the status change for audit trail
-    this.logStatusChange(petId, pet.status, newStatus, userId, reason);
+    this.logStatusChange(
+      petId,
+      pet.status as PetStatus,
+      newStatus,
+      userId,
+      reason,
+    );
 
     return updatedPet;
   }
@@ -116,7 +128,7 @@ export class PetsService {
   async getAllowedTransitions(petId: string, userRole?: UserRole) {
     const pet = await this.getPetById(petId);
     return StatusTransitionValidator.getAllowedTransitions(
-      pet.status,
+      pet.status as PetStatus,
       userRole,
     );
   }
@@ -127,7 +139,7 @@ export class PetsService {
    */
   async getTransitionInfo(petId: string) {
     const pet = await this.getPetById(petId);
-    return StatusTransitionValidator.getTransitionInfo(pet.status);
+    return StatusTransitionValidator.getTransitionInfo(pet.status as PetStatus);
   }
 
   /**
@@ -144,7 +156,11 @@ export class PetsService {
     const pet = await this.getPetById(petId);
 
     // Validate transition (without role restriction for internal calls)
-    StatusTransitionValidator.validate(pet.status, newStatus, UserRole.ADMIN);
+    StatusTransitionValidator.validate(
+      pet.status as PetStatus,
+      newStatus,
+      UserRole.ADMIN,
+    );
 
     const updatedPet = await this.prisma.pet.update({
       where: { id: petId },
@@ -158,7 +174,7 @@ export class PetsService {
     // Log the change
     this.logStatusChange(
       petId,
-      pet.status,
+      pet.status as PetStatus,
       newStatus,
       undefined, // No user actor for system changes
       reason || 'System-triggered status change',
@@ -206,5 +222,92 @@ export class PetsService {
     console.log(
       `[PET STATUS CHANGE] ${petId}: ${oldStatus} → ${newStatus}${userId ? ` by ${userId}` : ' (system)'}${reason ? ` - ${reason}` : ''}`,
     );
+  }
+
+  /**
+   * Create a new pet
+   * @param createPetDto - Data for creating the pet
+   * @param ownerId - The ID of the owner (user) adopting the pet
+   * @returns The created pet
+   */
+  async create(createPetDto: CreatePetDto, ownerId: string) {
+    return this.prisma.pet.create({
+      data: {
+        ...createPetDto,
+        currentOwnerId: ownerId,
+        status: 'AVAILABLE',
+      },
+      include: { currentOwner: true },
+    });
+  }
+
+  /**
+   * Find all pets
+   * @returns List of available pets
+   */
+  async findAll() {
+    return this.prisma.pet.findMany({
+      where: { status: 'AVAILABLE' },
+      include: { currentOwner: true },
+    });
+  }
+
+  /**
+   * Find a pet by ID
+   * @param id - The pet's ID
+   * @returns The found pet
+   * @throws NotFoundException if pet doesn't exist
+   */
+  async findOne(id: string) {
+    const pet = await this.prisma.pet.findUnique({
+      where: { id },
+      include: { currentOwner: true },
+    });
+    if (!pet) throw new NotFoundException('Pet not found');
+    return pet;
+  }
+
+  /**
+   * Update a pet
+   * @param id - The pet's ID
+   * @param updatePetDto - Data for updating the pet
+   * @param userId - The ID of the user making the request
+   * @param userRole - The role of the user (ADMIN, USER, SHELTER)
+   * @returns The updated pet
+   * @throws NotFoundException if pet doesn't exist
+   * @throws ForbiddenException if user not authorized
+   */
+  async update(
+    id: string,
+    updatePetDto: UpdatePetDto,
+    userId: string,
+    userRole: string,
+  ) {
+    const pet = await this.prisma.pet.findUnique({ where: { id } });
+    if (!pet) throw new NotFoundException('Pet not found');
+    if (pet.currentOwnerId !== userId && userRole !== 'ADMIN')
+      throw new ForbiddenException('Not authorized');
+    return this.prisma.pet.update({
+      where: { id },
+      data: updatePetDto,
+      include: { currentOwner: true },
+    });
+  }
+
+  /**
+   * Remove a pet
+   * @param id - The pet's ID
+   * @param userRole - The role of the user (ADMIN, USER, SHELTER)
+   * @returns Success message
+   * @throws NotFoundException if pet doesn't exist
+   * @throws ForbiddenException if user not authorized
+   */
+  async remove(id: string, userRole: string) {
+    const pet = await this.prisma.pet.findUnique({ where: { id } });
+    if (!pet) throw new NotFoundException('Pet not found');
+    if (userRole !== 'ADMIN')
+      throw new ForbiddenException('Only admin can delete');
+    await this.prisma.pet.delete({ where: { id } });
+    return { message: 'Pet deleted successfully' };
   }
 }

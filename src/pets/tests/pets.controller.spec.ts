@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PetsController } from '../pets.controller';
 import { PetsService } from '../pets.service';
-import { PetStatus, UserRole } from '@prisma/client';
+import { PetStatus, UserRole } from '../../common/enums';
 import {
   BadRequestException,
   ForbiddenException,
@@ -234,7 +234,8 @@ describe('PetsController - Status Lifecycle', () => {
 
     it('should require JWT token for allowed transitions endpoint', () => {
       // This is handled by JwtAuthGuard
-      expect(controller.getAllowedTransitionsForUser).toBeDefined();
+      // Controller test just verifies the guard is applied via decorator
+      expect(typeof controller.getAllowedTransitionsForUser).toBe('function');
     });
 
     it('should allow public access to pet details', async () => {

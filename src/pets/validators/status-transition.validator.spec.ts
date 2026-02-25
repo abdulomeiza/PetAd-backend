@@ -1,31 +1,42 @@
 import { BadRequestException } from '@nestjs/common';
 import { StatusTransitionValidator } from './status-transition.validator';
-import { PetStatus } from '../enums/pet-status.enum';
-import { UserRole } from '@prisma/client';
+import { PetStatus, UserRole } from '../../common/enums';
 
 describe('StatusTransitionValidator', () => {
   describe('validate - Valid Transitions', () => {
     it('should allow AVAILABLE → PENDING', () => {
       expect(() =>
-        StatusTransitionValidator.validate(PetStatus.AVAILABLE, PetStatus.PENDING),
+        StatusTransitionValidator.validate(
+          PetStatus.AVAILABLE,
+          PetStatus.PENDING,
+        ),
       ).not.toThrow();
     });
 
     it('should allow AVAILABLE → IN_CUSTODY', () => {
       expect(() =>
-        StatusTransitionValidator.validate(PetStatus.AVAILABLE, PetStatus.IN_CUSTODY),
+        StatusTransitionValidator.validate(
+          PetStatus.AVAILABLE,
+          PetStatus.IN_CUSTODY,
+        ),
       ).not.toThrow();
     });
 
     it('should allow PENDING → ADOPTED', () => {
       expect(() =>
-        StatusTransitionValidator.validate(PetStatus.PENDING, PetStatus.ADOPTED),
+        StatusTransitionValidator.validate(
+          PetStatus.PENDING,
+          PetStatus.ADOPTED,
+        ),
       ).not.toThrow();
     });
 
     it('should allow PENDING → AVAILABLE', () => {
       expect(() =>
-        StatusTransitionValidator.validate(PetStatus.PENDING, PetStatus.AVAILABLE),
+        StatusTransitionValidator.validate(
+          PetStatus.PENDING,
+          PetStatus.AVAILABLE,
+        ),
       ).not.toThrow();
     });
 
@@ -69,22 +80,23 @@ describe('StatusTransitionValidator', () => {
     });
 
     it('should require ADMIN role for ADOPTED transitions', () => {
-      const error = expect(() =>
+      expect(() =>
         StatusTransitionValidator.validate(
           PetStatus.ADOPTED,
           PetStatus.AVAILABLE,
           UserRole.USER,
         ),
       ).toThrow(BadRequestException);
-
-      expect(error).toBeDefined();
     });
   });
 
   describe('validate - Invalid Transitions', () => {
     it('should block ADOPTED → PENDING', () => {
       expect(() =>
-        StatusTransitionValidator.validate(PetStatus.ADOPTED, PetStatus.PENDING),
+        StatusTransitionValidator.validate(
+          PetStatus.ADOPTED,
+          PetStatus.PENDING,
+        ),
       ).toThrow(BadRequestException);
     });
 
@@ -117,11 +129,17 @@ describe('StatusTransitionValidator', () => {
 
     it('should block same status update (no-op)', () => {
       expect(() =>
-        StatusTransitionValidator.validate(PetStatus.AVAILABLE, PetStatus.AVAILABLE),
+        StatusTransitionValidator.validate(
+          PetStatus.AVAILABLE,
+          PetStatus.AVAILABLE,
+        ),
       ).toThrow(BadRequestException);
 
       expect(() =>
-        StatusTransitionValidator.validate(PetStatus.ADOPTED, PetStatus.ADOPTED),
+        StatusTransitionValidator.validate(
+          PetStatus.ADOPTED,
+          PetStatus.ADOPTED,
+        ),
       ).toThrow(BadRequestException);
     });
   });
@@ -129,12 +147,19 @@ describe('StatusTransitionValidator', () => {
   describe('validate - Error Messages', () => {
     it('should provide clear error message for invalid transitions', () => {
       try {
-        StatusTransitionValidator.validate(PetStatus.ADOPTED, PetStatus.PENDING);
+        StatusTransitionValidator.validate(
+          PetStatus.ADOPTED,
+          PetStatus.PENDING,
+        );
         fail('Should have thrown');
       } catch (error) {
-        expect(error.message).toContain('ADOPTED');
-        expect(error.message).toContain('PENDING');
-        expect(error.message).toContain('not allowed');
+        if (error instanceof Error) {
+          expect(error.message).toContain('ADOPTED');
+          expect(error.message).toContain('PENDING');
+          expect(error.message).toContain('not allowed');
+        } else {
+          throw error;
+        }
       }
     });
 
@@ -147,16 +172,27 @@ describe('StatusTransitionValidator', () => {
         );
         fail('Should have thrown');
       } catch (error) {
-        expect(error.message).toContain('ADMIN');
+        if (error instanceof Error) {
+          expect(error.message).toContain('ADMIN');
+        } else {
+          throw error;
+        }
       }
     });
 
     it('should mention same status in error for no-op', () => {
       try {
-        StatusTransitionValidator.validate(PetStatus.PENDING, PetStatus.PENDING);
+        StatusTransitionValidator.validate(
+          PetStatus.PENDING,
+          PetStatus.PENDING,
+        );
         fail('Should have thrown');
       } catch (error) {
-        expect(error.message).toContain('already');
+        if (error instanceof Error) {
+          expect(error.message).toContain('already');
+        } else {
+          throw error;
+        }
       }
     });
   });
@@ -275,7 +311,9 @@ describe('StatusTransitionValidator', () => {
 
   describe('getTransitionInfo', () => {
     it('should return transition info for a status', () => {
-      const info = StatusTransitionValidator.getTransitionInfo(PetStatus.AVAILABLE);
+      const info = StatusTransitionValidator.getTransitionInfo(
+        PetStatus.AVAILABLE,
+      );
 
       expect(info).toHaveProperty('currentStatus', PetStatus.AVAILABLE);
       expect(info).toHaveProperty('allowedTransitions');
@@ -284,20 +322,26 @@ describe('StatusTransitionValidator', () => {
     });
 
     it('should include all allowed transitions', () => {
-      const info = StatusTransitionValidator.getTransitionInfo(PetStatus.PENDING);
+      const info = StatusTransitionValidator.getTransitionInfo(
+        PetStatus.PENDING,
+      );
 
       expect(info.allowedTransitions).toContain(PetStatus.ADOPTED);
       expect(info.allowedTransitions).toContain(PetStatus.AVAILABLE);
     });
 
     it('should include admin-only transitions', () => {
-      const info = StatusTransitionValidator.getTransitionInfo(PetStatus.ADOPTED);
+      const info = StatusTransitionValidator.getTransitionInfo(
+        PetStatus.ADOPTED,
+      );
 
       expect(info.adminOnlyTransitions).toContain(PetStatus.AVAILABLE);
     });
 
     it('should provide human-readable description', () => {
-      const info = StatusTransitionValidator.getTransitionInfo(PetStatus.AVAILABLE);
+      const info = StatusTransitionValidator.getTransitionInfo(
+        PetStatus.AVAILABLE,
+      );
 
       expect(info.description).toBeTruthy();
       expect(typeof info.description).toBe('string');
@@ -334,4 +378,3 @@ describe('StatusTransitionValidator', () => {
     });
   });
 });
-
