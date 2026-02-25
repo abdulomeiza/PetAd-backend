@@ -22,6 +22,13 @@ enum PetSpecies {
   OTHER
 }
 
+enum PetStatus {
+  AVAILABLE
+  PENDING
+  IN_CUSTODY
+  ADOPTED
+}
+
 enum AdoptionStatus {
   REQUESTED
   PENDING
@@ -31,6 +38,7 @@ enum AdoptionStatus {
   REJECTED
   CANCELLED
 }
+
 
 enum CustodyStatus {
   ACTIVE
@@ -45,6 +53,8 @@ enum CustodyType {
   SHELTER
 }
 
+
+
 enum EscrowStatus {
   CREATED
   FUNDED
@@ -53,6 +63,7 @@ enum EscrowStatus {
   DISPUTED
 }
 
+
 enum EventEntityType {
   USER
   PET
@@ -60,6 +71,7 @@ enum EventEntityType {
   CUSTODY
   ESCROW
 }
+
 
 enum EventType {
   USER_REGISTERED
@@ -75,6 +87,17 @@ enum EventType {
   TRUST_SCORE_UPDATED
 }
 
+enum PetGender {
+  MALE
+  FEMALE
+}
+
+enum PetSize {
+  SMALL
+  MEDIUM
+  LARGE
+}
+
 // ─── Models ──────────────────────────────────────────────
 
 model User {
@@ -85,7 +108,7 @@ model User {
   lastName  String   @map("last_name")
   role      UserRole @default(USER)
 
-  trustScore Float @default(50)
+  trustScore Float   @default(50)
 
 
 
@@ -95,7 +118,7 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  petsOwned Pet[] @relation("PetOwner")
+  petsOwned   Pet[] @relation("PetOwner")
 
   adoptionsAsAdopter Adoption[] @relation("Adopter")
   adoptionsAsOwner   Adoption[] @relation("Owner")
@@ -108,6 +131,8 @@ model User {
   @@map("users")
 }
 
+
+
 model Pet {
 
   id          String      @id @default(uuid())
@@ -116,10 +141,14 @@ model Pet {
   breed       String?
   age         Int?
   description String?
-  imageUrl    String?    @map("image_url")
+  imageUrl    String?     @map("image_url")
+  status      PetStatus   @default(AVAILABLE)
 
-  currentOwnerId String? @map("current_owner_id")
-  currentOwner   User?   @relation("PetOwner", fields: [currentOwnerId], references: [id])
+  gender      PetGender?   // Optional gender field
+  size        PetSize?     // Optional size field
+
+  currentOwnerId String?  @map("current_owner_id")
+  currentOwner   User?    @relation("PetOwner", fields: [currentOwnerId], references: [id])
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -128,9 +157,11 @@ model Pet {
   custodies Custody[]
 
   @@index([species])
+  @@index([status])
   @@index([currentOwnerId])
   @@map("pets")
 }
+
 
 model Adoption {
 
@@ -147,8 +178,9 @@ model Adoption {
   ownerId String @map("owner_id")
   owner   User   @relation("Owner", fields: [ownerId], references: [id])
 
-  escrowId String? @unique @map("escrow_id")
+  escrowId String?  @unique @map("escrow_id")
   escrow   Escrow? @relation(fields: [escrowId], references: [id])
+  
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -159,6 +191,8 @@ model Adoption {
   @@map("adoptions")
 }
 
+
+
 model Custody {
   
   id       String        @id @default(uuid())
@@ -167,7 +201,7 @@ model Custody {
 
   depositAmount Decimal? @db.Decimal(12, 2)
 
-  startDate DateTime  @map("start_date")
+  startDate DateTime @map("start_date")
   endDate   DateTime?
 
   petId String @map("pet_id")
@@ -187,20 +221,21 @@ model Custody {
   @@map("custodies")
 }
 
+
 model Escrow {
   id String @id @default(uuid())
 
-  stellarPublicKey       String @unique @map("stellar_public_key")
+  stellarPublicKey String @unique @map("stellar_public_key")
   stellarSecretEncrypted String @map("stellar_secret_encrypted")
 
-  assetCode   String  @default("XLM") @map("asset_code")
+  assetCode String @default("XLM") @map("asset_code")
   assetIssuer String? @map("asset_issuer")
 
   amount Decimal @db.Decimal(12, 2)
 
-  fundingTxHash String? @map("funding_tx_hash")
-  releaseTxHash String? @map("release_tx_hash")
-  refundTxHash  String? @map("refund_tx_hash")
+  fundingTxHash  String? @map("funding_tx_hash")
+  releaseTxHash  String? @map("release_tx_hash")
+  refundTxHash   String? @map("refund_tx_hash")
 
   requiredSignatures Int @default(2)
 
@@ -217,10 +252,10 @@ model Escrow {
 }
 
 model EventLog {
-  id         String          @id @default(uuid())
-  entityType EventEntityType @map("entity_type")
-  entityId   String          @map("entity_id")
-  eventType  EventType       @map("event_type")
+  id          String           @id @default(uuid())
+  entityType  EventEntityType  @map("entity_type")
+  entityId    String           @map("entity_id")
+  eventType   EventType        @map("event_type")
 
   actorId String? @map("actor_id")
   actor   User?   @relation("ActorEvents", fields: [actorId], references: [id])
