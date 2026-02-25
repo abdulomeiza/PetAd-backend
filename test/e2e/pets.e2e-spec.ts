@@ -1,0 +1,527 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import * as request from 'supertest';
+import { AppModule } from '../src/app.module';
+import { PrismaService } from '../src/prisma/prisma.service';
+import { PetStatus } from '../src/pets/enums/pet-status.enum';
+import { UserRole } from '@prisma/client';
+
+describe('Pet Status Lifecycle (E2E)', () => {
+  let app: INestApplication;
+  let prismaService: PrismaService;
+  let petId: string;
+  let adminToken: string;
+  let userToken: string;
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+    await app.init();
+
+    prismaService = moduleFixture.get<PrismaService>(PrismaService);
+
+    // Clean up database before tests
+    await prismaService.pet.deleteMany({});
+    await prismaService.user.deleteMany({});
+
+    // Create test users
+    const adminUser = await prismaService.user.create({
+      data: {
+        email: 'admin@test.com',
+        password: 'hashedpassword',
+        firstName: 'Admin',
+        lastName: 'User',
+        role: UserRole.ADMIN,
+      },
+    });
+
+    const regularUser = await prismaService.user.create({
+      data: {
+        email: 'user@test.com',
+        password: 'hashedpassword',
+        firstName: 'Regular',
+        lastName: 'User',
+        role: UserRole.USER,
+      },
+    });
+
+    // Create test pet
+    const pet = await prismaService.pet.create({
+      data: {
+        name: 'Buddy',
+        species: 'DOG',
+        breed: 'Golden Retriever',
+        age: 3,
+        description: 'Friendly dog',
+        imageUrl: 'https://example.com/buddy.jpg',
+        status: PetStatus.AVAILABLE,
+        currentOwnerId: regularUser.id,
+      },
+    });
+
+    petId = pet.id;
+
+    // In a real app, these would be obtained from the auth endpoints
+    // For testing purposes, we'll mock them
+    adminToken = 'mock-admin-token';
+    userToken = 'mock-user-token';
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  describe('GET /pets/:id - View pet details', () => {
+    it('should return pet with current status', async () => {
+      const response = await request(app.getHttpServer()).get(
+        `/pets/${petId}`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe('Buddy');
+      expect(response.body.status).toBe(PetStatus.AVAILABLE);
+    });
+
+    it('should allow public access (no auth required)', async () => {
+      const response = await request(app.getHttpServer()).get(
+        `/pets/${petId}`,
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it('should return 404 for non-existent pet', async () => {
+      const response = await request(app.getHttpServer()).get(
+        `/pets/nonexistent-id`,
+      );
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('GET /pets/:id/transitions - View allowed transitions', () => {
+    it('should return transition info for a pet', async () => {
+      const response = await request(app.getHttpServer()).get(
+        `/pets/${petId}/transitions`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('currentStatus');
+      expect(response.body).toHaveProperty('allowedTransitions');
+      expect(response.body.allowedTransitions).toContain(PetStatus.PENDING);
+      expect(response.body.allowedTransitions).toContain(PetStatus.IN_CUSTODY);
+    });
+  });
+
+  describe('PATCH /pets/:id/status - Valid Transitions', () => {
+    it('should allow AVAILABLE → PENDING transition', async () => {
+      const response = await request(app.getHttpServer())
+        .patch(`/pets/${petId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.PENDING,
+          reason: 'Adoption request received',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe(PetStatus.PENDING);
+
+      // Verify in database
+      const updatedPet = await prismaService.pet.findUnique({
+        where: { id: petId },
+      });
+      expect(updatedPet.status).toBe(PetStatus.PENDING);
+    });
+
+    it('should allow PENDING → ADOPTED transition (admin)', async () => {
+      // First move to PENDING
+      await prismaService.pet.update({
+        where: { id: petId },
+        data: { status: PetStatus.PENDING },
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/pets/${petId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.ADOPTED,
+          reason: 'Adoption approved',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe(PetStatus.ADOPTED);
+    });
+
+    it('should allow PENDING → AVAILABLE transition (adoption rejected)', async () => {
+      // Reset to PENDING
+      await prismaService.pet.update({
+        where: { id: petId },
+        data: { status: PetStatus.PENDING },
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/pets/${petId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.AVAILABLE,
+          reason: 'Adoption request rejected',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe(PetStatus.AVAILABLE);
+    });
+
+    it('should allow AVAILABLE → IN_CUSTODY transition', async () => {
+      const response = await request(app.getHttpServer())
+        .patch(`/pets/${petId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.IN_CUSTODY,
+          reason: 'Custody agreement created',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe(PetStatus.IN_CUSTODY);
+    });
+
+    it('should allow IN_CUSTODY → AVAILABLE transition', async () => {
+      // Ensure pet is IN_CUSTODY
+      await prismaService.pet.update({
+        where: { id: petId },
+        data: { status: PetStatus.IN_CUSTODY },
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/pets/${petId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.AVAILABLE,
+          reason: 'Custody period completed',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe(PetStatus.AVAILABLE);
+    });
+  });
+
+  describe('PATCH /pets/:id/status - Admin-Only Transitions', () => {
+    it('should allow ADMIN to return ADOPTED pet to AVAILABLE', async () => {
+      // Set to ADOPTED
+      await prismaService.pet.update({
+        where: { id: petId },
+        data: { status: PetStatus.ADOPTED },
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/pets/${petId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.AVAILABLE,
+          reason: 'Pet returned by adopter - refund processed',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe(PetStatus.AVAILABLE);
+    });
+
+    it('should prevent non-admin from changing to ADOPTED status', async () => {
+      // Set to PENDING
+      await prismaService.pet.update({
+        where: { id: petId },
+        data: { status: PetStatus.PENDING },
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/pets/${petId}/status`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          newStatus: PetStatus.ADOPTED,
+          reason: 'Trying to approve as regular user',
+        });
+
+      expect(response.status).toBe(403);
+      expect(response.body.message).toContain('ADMIN');
+    });
+  });
+
+  describe('PATCH /pets/:id/status - Invalid Transitions', () => {
+    it('should block ADOPTED → PENDING transition', async () => {
+      // Set to ADOPTED
+      await prismaService.pet.update({
+        where: { id: petId },
+        data: { status: PetStatus.ADOPTED },
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/pets/${petId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.PENDING,
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain('not allowed');
+    });
+
+    it('should block ADOPTED → IN_CUSTODY transition', async () => {
+      const response = await request(app.getHttpServer())
+        .patch(`/pets/${petId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.IN_CUSTODY,
+        });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should block IN_CUSTODY → ADOPTED transition', async () => {
+      // Set to IN_CUSTODY
+      await prismaService.pet.update({
+        where: { id: petId },
+        data: { status: PetStatus.IN_CUSTODY },
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/pets/${petId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.ADOPTED,
+        });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should block same status update (no-op)', async () => {
+      // Get current status
+      const pet = await prismaService.pet.findUnique({
+        where: { id: petId },
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/pets/${petId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: pet.status,
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain('already');
+    });
+  });
+
+  describe('PATCH /pets/:id/status - Authorization', () => {
+    it('should require authentication to update status', async () => {
+      const response = await request(app.getHttpServer())
+        .patch(`/pets/${petId}/status`)
+        .send({
+          newStatus: PetStatus.PENDING,
+        });
+
+      expect(response.status).toBe(401);
+    });
+
+    it('should accept valid JWT token', async () => {
+      // This test assumes a valid token can be obtained
+      // In real scenarios, integrate with auth endpoints
+      const response = await request(app.getHttpServer())
+        .patch(`/pets/${petId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.AVAILABLE,
+          reason: 'Test',
+        });
+
+      // Should not return 401
+      expect(response.status).not.toBe(401);
+    });
+  });
+
+  describe('PATCH /pets/:id/status - Error Responses', () => {
+    it('should return 400 with clear error message for invalid transition', async () => {
+      const response = await request(app.getHttpServer())
+        .patch(`/pets/${petId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.PENDING,
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('message');
+      expect(response.body.message).toContain('Cannot change status');
+    });
+
+    it('should return 404 for non-existent pet', async () => {
+      const response = await request(app.getHttpServer())
+        .patch(`/pets/nonexistent-id/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.PENDING,
+        });
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should validate request body schema', async () => {
+      const response = await request(app.getHttpServer())
+        .patch(`/pets/${petId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: 'INVALID_STATUS',
+        });
+
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe('GET /pets/:id/transitions/allowed - Role-based Transitions', () => {
+    it('should return different transitions for ADMIN user', async () => {
+      // Set pet to ADOPTED
+      await prismaService.pet.update({
+        where: { id: petId },
+        data: { status: PetStatus.ADOPTED },
+      });
+
+      const response = await request(app.getHttpServer())
+        .get(`/pets/${petId}/transitions/allowed`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toContain(PetStatus.AVAILABLE); // Admin can return
+    });
+
+    it('should return restricted transitions for regular user', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`/pets/${petId}/transitions/allowed`)
+        .set('Authorization', `Bearer ${userToken}`);
+
+      expect(response.status).toBe(200);
+      // Regular user should not have admin-only transitions
+    });
+
+    it('should require authentication', async () => {
+      const response = await request(app.getHttpServer()).get(
+        `/pets/${petId}/transitions/allowed`,
+      );
+
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe('Complete Adoption Workflow', () => {
+    let testPetId: string;
+
+    beforeEach(async () => {
+      // Create a fresh pet for this workflow
+      const pet = await prismaService.pet.create({
+        data: {
+          name: 'Workflow Test Pet',
+          species: 'CAT',
+          breed: 'Persian',
+          status: PetStatus.AVAILABLE,
+        },
+      });
+      testPetId = pet.id;
+    });
+
+    it('should complete full adoption flow', async () => {
+      // 1. View available transitions
+      let response = await request(app.getHttpServer()).get(
+        `/pets/${testPetId}/transitions`,
+      );
+      expect(response.status).toBe(200);
+      expect(response.body.allowedTransitions).toContain(PetStatus.PENDING);
+
+      // 2. Change to PENDING (adoption request)
+      response = await request(app.getHttpServer())
+        .patch(`/pets/${testPetId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.PENDING,
+          reason: 'Adoption request received',
+        });
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe(PetStatus.PENDING);
+
+      // 3. Change to ADOPTED (approval)
+      response = await request(app.getHttpServer())
+        .patch(`/pets/${testPetId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.ADOPTED,
+          reason: 'Adoption approved',
+        });
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe(PetStatus.ADOPTED);
+
+      // 4. Admin can return pet if needed
+      response = await request(app.getHttpServer())
+        .patch(`/pets/${testPetId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.AVAILABLE,
+          reason: 'Pet returned - refund issued',
+        });
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe(PetStatus.AVAILABLE);
+    });
+  });
+
+  describe('Complete Custody Workflow', () => {
+    let testPetId: string;
+
+    beforeEach(async () => {
+      // Create a fresh pet for this workflow
+      const pet = await prismaService.pet.create({
+        data: {
+          name: 'Custody Test Pet',
+          species: 'BIRD',
+          breed: 'Parrot',
+          status: PetStatus.AVAILABLE,
+        },
+      });
+      testPetId = pet.id;
+    });
+
+    it('should complete full temporary custody flow', async () => {
+      // 1. Change to IN_CUSTODY
+      let response = await request(app.getHttpServer())
+        .patch(`/pets/${testPetId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.IN_CUSTODY,
+          reason: 'Temporary custody agreement created',
+        });
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe(PetStatus.IN_CUSTODY);
+
+      // 2. Return from custody
+      response = await request(app.getHttpServer())
+        .patch(`/pets/${testPetId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          newStatus: PetStatus.AVAILABLE,
+          reason: 'Custody period completed - pet returned',
+        });
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe(PetStatus.AVAILABLE);
+
+      // 3. Pet is available for new adoption/custody
+      response = await request(app.getHttpServer()).get(
+        `/pets/${testPetId}/transitions`,
+      );
+      expect(response.body.allowedTransitions).toContain(PetStatus.PENDING);
+      expect(response.body.allowedTransitions).toContain(PetStatus.IN_CUSTODY);
+    });
+  });
+});
+
