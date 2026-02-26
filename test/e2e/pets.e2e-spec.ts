@@ -100,9 +100,7 @@ describe('Pet Status Lifecycle (E2E)', () => {
 
   describe('GET /pets/:id - View pet details', () => {
     it('should return pet with current status', async () => {
-      const response = await request(app.getHttpServer()).get(
-        `/pets/${petId}`,
-      );
+      const response = await request(app.getHttpServer()).get(`/pets/${petId}`);
 
       expect(response.status).toBe(200);
       expect(response.body.name).toBe('Buddy');
@@ -110,9 +108,7 @@ describe('Pet Status Lifecycle (E2E)', () => {
     });
 
     it('should allow public access (no auth required)', async () => {
-      const response = await request(app.getHttpServer()).get(
-        `/pets/${petId}`,
-      );
+      const response = await request(app.getHttpServer()).get(`/pets/${petId}`);
 
       expect(response.status).toBe(200);
     });
@@ -157,7 +153,7 @@ describe('Pet Status Lifecycle (E2E)', () => {
       const updatedPet = await prismaService.pet.findUnique({
         where: { id: petId },
       });
-      expect(updatedPet.status).toBe(PetStatus.PENDING);
+      expect(updatedPet!.status).toBe(PetStatus.PENDING);
     });
 
     it('should allow PENDING → ADOPTED transition (admin)', async () => {
@@ -328,7 +324,7 @@ describe('Pet Status Lifecycle (E2E)', () => {
         .patch(`/pets/${petId}/status`)
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          newStatus: pet.status,
+          newStatus: pet!.status,
         });
 
       expect(response.status).toBe(400);
@@ -547,4 +543,3 @@ describe('Pet Status Lifecycle (E2E)', () => {
     });
   });
 });
-
