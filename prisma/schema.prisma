@@ -31,14 +31,15 @@ enum PetStatus {
 
 enum AdoptionStatus {
   REQUESTED
+  PENDING_REVIEW
   PENDING
   APPROVED
   ESCROW_FUNDED
   COMPLETED
   REJECTED
   CANCELLED
+  REFUNDED
 }
-
 
 enum CustodyStatus {
   ACTIVE
