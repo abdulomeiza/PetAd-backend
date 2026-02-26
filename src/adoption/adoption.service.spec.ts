@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, ConflictException } from '@nestjs/common';
 import { AdoptionService } from './adoption.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
@@ -32,8 +32,10 @@ describe('AdoptionService', () => {
     adoption: {
       create: jest.fn(),
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       update: jest.fn(),
     },
+    $transaction: jest.fn().mockImplementation(async (cb) => cb(mockPrisma)),
   };
 
   const mockEvents = {
@@ -60,8 +62,8 @@ describe('AdoptionService', () => {
     const dto = { petId: PET_ID, ownerId: OWNER_ID };
 
     it('creates the adoption record and fires ADOPTION_REQUESTED', async () => {
-      mockPrisma.pet.findUnique.mockResolvedValue({ id: PET_ID });
-      mockPrisma.user.findUnique.mockResolvedValue({ id: OWNER_ID });
+      mockPrisma.pet.findUnique.mockResolvedValue({ id: PET_ID, currentOwnerId: OWNER_ID });
+      mockPrisma.adoption.findFirst.mockResolvedValue(null);
       mockPrisma.adoption.create.mockResolvedValue(mockAdoption);
       mockEvents.logEvent.mockResolvedValue({});
 
@@ -91,7 +93,6 @@ describe('AdoptionService', () => {
 
     it('throws NotFoundException when the pet does not exist', async () => {
       mockPrisma.pet.findUnique.mockResolvedValue(null);
-      mockPrisma.user.findUnique.mockResolvedValue({ id: OWNER_ID });
 
       await expect(service.requestAdoption(ADOPTER_ID, dto)).rejects.toThrow(
         NotFoundException,
@@ -101,20 +102,30 @@ describe('AdoptionService', () => {
       expect(mockEvents.logEvent).not.toHaveBeenCalled();
     });
 
-    it('throws NotFoundException when the owner does not exist', async () => {
-      mockPrisma.pet.findUnique.mockResolvedValue({ id: PET_ID });
-      mockPrisma.user.findUnique.mockResolvedValue(null);
+    it('throws ConflictException when the pet has no owner assigned', async () => {
+      mockPrisma.pet.findUnique.mockResolvedValue({ id: PET_ID, currentOwnerId: null });
 
       await expect(service.requestAdoption(ADOPTER_ID, dto)).rejects.toThrow(
-        NotFoundException,
+        ConflictException,
+      );
+
+      expect(mockPrisma.adoption.create).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when there is an active adoption', async () => {
+      mockPrisma.pet.findUnique.mockResolvedValue({ id: PET_ID, currentOwnerId: OWNER_ID });
+      mockPrisma.adoption.findFirst.mockResolvedValue(mockAdoption);
+
+      await expect(service.requestAdoption(ADOPTER_ID, dto)).rejects.toThrow(
+        ConflictException,
       );
 
       expect(mockPrisma.adoption.create).not.toHaveBeenCalled();
     });
 
     it('propagates logEvent errors (no silent failure)', async () => {
-      mockPrisma.pet.findUnique.mockResolvedValue({ id: PET_ID });
-      mockPrisma.user.findUnique.mockResolvedValue({ id: OWNER_ID });
+      mockPrisma.pet.findUnique.mockResolvedValue({ id: PET_ID, currentOwnerId: OWNER_ID });
+      mockPrisma.adoption.findFirst.mockResolvedValue(null);
       mockPrisma.adoption.create.mockResolvedValue(mockAdoption);
       mockEvents.logEvent.mockRejectedValue(new Error('DB connection lost'));
 
