@@ -11,6 +11,7 @@ describe('AdoptionController', () => {
 
   const mockAdoptionService = {
     requestAdoption: jest.fn(),
+    updateAdoptionStatus: jest.fn(),
   };
 
   const mockDocumentsService = {
@@ -51,32 +52,27 @@ describe('AdoptionController', () => {
 
   it('should log an ADOPTION_APPROVED event when approving an adoption', async () => {
     const req = { user: { userId: 'admin-123' } } as unknown as Request;
-    mockEventsService.logEvent.mockResolvedValue({});
+    const mockAdoption = { id: 'adoption-1', status: 'APPROVED' };
+    mockAdoptionService.updateAdoptionStatus.mockResolvedValue(mockAdoption);
 
-    const result = await controller.approveAdoption('adoption-1', req);
+    const result = await controller.approveAdoption(req as any, 'adoption-1');
 
-    expect(result).toEqual({ message: 'Adoption adoption-1 approved' });
-    expect(mockEventsService.logEvent).toHaveBeenCalledWith({
-      entityType: EventEntityType.ADOPTION,
-      entityId: 'adoption-1',
-      eventType: EventType.ADOPTION_APPROVED,
-      actorId: 'admin-123',
-      payload: expect.objectContaining({
-        adoptionId: 'adoption-1',
-        status: 'APPROVED',
-        source: 'AdoptionController',
-      }),
-    });
+    expect(result).toEqual(mockAdoption);
+    expect(mockAdoptionService.updateAdoptionStatus).toHaveBeenCalledWith(
+      'adoption-1',
+      'admin-123',
+      { status: 'APPROVED' },
+    );
   });
 
   it('should throw a descriptive error when event logging fails', async () => {
     const req = { user: { userId: 'admin-123' } } as unknown as Request;
-    mockEventsService.logEvent.mockRejectedValue(
-      new Error('Database unavailable'),
+    mockAdoptionService.updateAdoptionStatus.mockRejectedValue(
+      new Error('Failed to record adoption approval event'),
     );
 
     await expect(
-      controller.approveAdoption('adoption-2', req),
+      controller.approveAdoption(req as any, 'adoption-2'),
     ).rejects.toThrow('Failed to record adoption approval event');
   });
 });
