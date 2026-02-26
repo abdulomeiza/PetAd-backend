@@ -59,14 +59,14 @@ export class PetsController {
   }
 
   /**
-   * List all available pets with pagination
+   * List all available pets with pagination and filtering
    * Public endpoint - no authentication required
    */
   @Get()
   @ApiOperation({
-    summary: 'List all available pets with pagination',
+    summary: 'List all available pets with pagination and filtering',
     description:
-      'Returns paginated list of pets with optional filtering by species, gender, size, status, and search query',
+      'Returns paginated list of pets with optional filtering by species, gender, size, status, breed, location, age range, and keyword search',
   })
   @ApiResponse({
     status: 200,
@@ -159,18 +159,33 @@ export class PetsController {
   }
 
   /**
-   * Update pet information
+   * Update pet information with ownership validation
    * Requires JWT authentication
    * Shelter or Admin role required
+   * Only owner or admin can update
    */
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SHELTER', 'ADMIN')
-  @ApiOperation({ summary: 'Update pet information' })
+  @ApiOperation({
+    summary: 'Update pet information',
+    description:
+      'Update pet details. Only the pet owner or admin can perform this action.',
+  })
   @ApiParam({ name: 'id', description: 'Pet ID' })
   @ApiBody({ type: UpdatePetDto })
-  @ApiResponse({ status: 200, description: 'Pet updated' })
-  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 200, description: 'Pet updated successfully' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - You can only update your own pets',
+    schema: {
+      example: {
+        message: 'You can only update your own pets',
+        error: 'Forbidden',
+        statusCode: 403,
+      },
+    },
+  })
   @ApiResponse({ status: 404, description: 'Pet not found' })
   @ApiBearerAuth('JWT-auth')
   async update(
@@ -293,17 +308,39 @@ export class PetsController {
   }
 
   /**
-   * Remove pet listing
+   * Remove pet listing (admin only)
    * Requires JWT authentication
    * Admin role required
    */
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  @ApiOperation({ summary: 'Remove pet listing' })
+  @ApiOperation({
+    summary: 'Remove pet listing',
+    description:
+      'Delete a pet from the system. Only administrators can perform this action.',
+  })
   @ApiParam({ name: 'id', description: 'Pet ID' })
-  @ApiResponse({ status: 200, description: 'Pet deleted' })
-  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({
+    status: 200,
+    description: 'Pet deleted successfully',
+    schema: {
+      example: {
+        message: 'Pet deleted successfully',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Admin only',
+    schema: {
+      example: {
+        message: 'Only administrators can delete pets',
+        error: 'Forbidden',
+        statusCode: 403,
+      },
+    },
+  })
   @ApiResponse({ status: 404, description: 'Pet not found' })
   @ApiBearerAuth('JWT-auth')
   async remove(

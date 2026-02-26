@@ -260,19 +260,37 @@ export class PetsService {
       gender,
       size,
       status,
+      breed,
+      location,
+      minAge,
+      maxAge,
       search,
     } = searchDto;
 
-    // Build filter conditions
+    // Build dynamic filter conditions
     const where: Prisma.PetWhereInput = {
       status: status || PetStatus.AVAILABLE, // Default to AVAILABLE for public
       ...(species && { species }),
       ...(gender && { gender }),
       ...(size && { size }),
+      ...(breed && { breed: { contains: breed, mode: 'insensitive' } }),
+      ...(location && {
+        // Location filter - searches in description field
+        description: { contains: location, mode: 'insensitive' },
+      }),
+      ...(minAge !== undefined || maxAge !== undefined
+        ? {
+            age: {
+              ...(minAge !== undefined && { gte: minAge }),
+              ...(maxAge !== undefined && { lte: maxAge }),
+            },
+          }
+        : {}),
       ...(search && {
         OR: [
           { name: { contains: search, mode: 'insensitive' } },
           { breed: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
         ],
       }),
     };
@@ -315,7 +333,7 @@ export class PetsService {
   }
 
   /**
-   * Update a pet
+   * Update a pet with ownership validation
    * @param id - The pet's ID
    * @param updatePetDto - Data for updating the pet
    * @param userId - The ID of the user making the request
@@ -330,10 +348,24 @@ export class PetsService {
     userId: string,
     userRole: string,
   ) {
+    // 1. Check if pet exists (404 before 403 for security)
     const pet = await this.prisma.pet.findUnique({ where: { id } });
-    if (!pet) throw new NotFoundException('Pet not found');
-    if (pet.currentOwnerId !== userId && userRole !== 'ADMIN')
-      throw new ForbiddenException('Not authorized');
+    if (!pet) {
+      throw new NotFoundException('Pet not found');
+    }
+
+    // 2. Validate ownership (admin can bypass)
+    if (userRole !== UserRole.ADMIN) {
+      if (pet.currentOwnerId !== userId) {
+        // Log unauthorized attempt for security monitoring
+        console.log(
+          `[OWNERSHIP VALIDATION FAILED] User ${userId} (role: ${userRole}) attempted to modify pet ${id} owned by ${pet.currentOwnerId}`,
+        );
+        throw new ForbiddenException('You can only update your own pets');
+      }
+    }
+
+    // 3. Perform update
     return this.prisma.pet.update({
       where: { id },
       data: updatePetDto,
@@ -342,7 +374,7 @@ export class PetsService {
   }
 
   /**
-   * Remove a pet
+   * Remove a pet (admin only)
    * @param id - The pet's ID
    * @param userRole - The role of the user (ADMIN, USER, SHELTER)
    * @returns Success message
@@ -350,10 +382,18 @@ export class PetsService {
    * @throws ForbiddenException if user not authorized
    */
   async remove(id: string, userRole: string) {
+    // 1. Check if pet exists (404 before 403)
     const pet = await this.prisma.pet.findUnique({ where: { id } });
-    if (!pet) throw new NotFoundException('Pet not found');
-    if (userRole !== 'ADMIN')
-      throw new ForbiddenException('Only admin can delete');
+    if (!pet) {
+      throw new NotFoundException('Pet not found');
+    }
+
+    // 2. Only admin can delete
+    if (userRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only administrators can delete pets');
+    }
+
+    // 3. Perform deletion
     await this.prisma.pet.delete({ where: { id } });
     return { message: 'Pet deleted successfully' };
   }

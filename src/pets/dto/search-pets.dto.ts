@@ -75,8 +75,53 @@ export class SearchPetsDto {
   status?: PetStatus;
 
   @ApiPropertyOptional({
-    description: 'Search by name or breed (case-insensitive)',
+    description: 'Filter by breed (case-insensitive, partial match)',
     example: 'Golden Retriever',
+  })
+  @IsOptional()
+  @IsString({ message: 'Breed must be a string' })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : (value as string),
+  )
+  breed?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by location/city (case-insensitive, partial match)',
+    example: 'Lagos',
+  })
+  @IsOptional()
+  @IsString({ message: 'Location must be a string' })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : (value as string),
+  )
+  location?: string;
+
+  @ApiPropertyOptional({
+    description: 'Minimum age in years',
+    example: 1,
+    minimum: 0,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'Minimum age must be an integer' })
+  @Min(0, { message: 'Minimum age cannot be negative' })
+  minAge?: number;
+
+  @ApiPropertyOptional({
+    description: 'Maximum age in years',
+    example: 5,
+    minimum: 0,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'Maximum age must be an integer' })
+  @Min(0, { message: 'Maximum age cannot be negative' })
+  maxAge?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Keyword search in name, breed, and description (case-insensitive)',
+    example: 'friendly golden',
   })
   @IsOptional()
   @IsString({ message: 'Search must be a string' })

@@ -19,7 +19,7 @@ import { Request } from 'express';
 
 interface AuthRequest extends Request {
   user: {
-    userId: string;
+    sub: string;
   };
 }
 
@@ -34,7 +34,7 @@ export class AdoptionController {
     @Req() req: AuthRequest,
     @Body() dto: CreateAdoptionDto,
   ) {
-    return this.adoptionService.requestAdoption(req.user.userId, dto);
+    return this.adoptionService.requestAdoption(req.user.sub, dto);
   }
 
   @Patch(':id/approve')
