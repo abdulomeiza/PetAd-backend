@@ -5,8 +5,11 @@ import {
   Param,
   Body,
   UseGuards,
-  Request,
+  Req,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -15,7 +18,7 @@ import { AdoptionService } from './adoption.service';
 import { CreateAdoptionDto } from './dto/create-adoption.dto';
 import { UpdateAdoptionStatusDto } from './dto/update-adoption-status.dto';
 
-interface AuthenticatedRequest extends Request {
+interface AuthRequest extends Request {
   user: { userId: string; email: string; role: string };
 }
 
@@ -25,15 +28,13 @@ export class AdoptionController {
   constructor(private readonly adoptionService: AdoptionService) {}
 
   /**
-   * POST /adoption
+   * POST /adoption/requests
    * Any authenticated user can request to adopt a pet.
    * Fires ADOPTION_REQUESTED event on success.
    */
-  @Post()
-  requestAdoption(
-    @Request() req: AuthenticatedRequest,
-    @Body() dto: CreateAdoptionDto,
-  ) {
+  @Post('requests')
+  @HttpCode(HttpStatus.CREATED)
+  requestAdoption(@Req() req: AuthRequest, @Body() dto: CreateAdoptionDto) {
     return this.adoptionService.requestAdoption(req.user.userId, dto);
   }
 
@@ -45,10 +46,7 @@ export class AdoptionController {
   @Patch(':id/approve')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
-  approveAdoption(
-    @Request() req: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
+  approveAdoption(@Req() req: AuthRequest, @Param('id') id: string) {
     return this.adoptionService.updateAdoptionStatus(id, req.user.userId, {
       status: 'APPROVED',
     });
@@ -62,10 +60,7 @@ export class AdoptionController {
   @Patch(':id/complete')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
-  completeAdoption(
-    @Request() req: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
+  completeAdoption(@Req() req: AuthRequest, @Param('id') id: string) {
     return this.adoptionService.updateAdoptionStatus(id, req.user.userId, {
       status: 'COMPLETED',
     });

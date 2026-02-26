@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import {
@@ -27,51 +32,68 @@ export class AdoptionService {
 
   /**
    * Creates an adoption request and fires an ADOPTION_REQUESTED event.
-   * Throws NotFoundException if the pet or owner does not exist.
+   * Throws NotFoundException if the pet does not exist.
+   * Throws ConflictException if the pet has no owner or already has an active adoption.
    */
   async requestAdoption(adopterId: string, dto: CreateAdoptionDto) {
-    const { petId, ownerId, notes } = dto;
+    return this.prisma.$transaction(async (tx) => {
+      const pet = await tx.pet.findUnique({ where: { id: dto.petId } });
 
-    const [pet, owner] = await Promise.all([
-      this.prisma.pet.findUnique({ where: { id: petId } }),
-      this.prisma.user.findUnique({ where: { id: ownerId } }),
-    ]);
+      if (!pet) {
+        throw new NotFoundException(`Pet with id "${dto.petId}" not found`);
+      }
 
-    if (!pet) {
-      throw new NotFoundException(`Pet with id "${petId}" not found`);
-    }
-    if (!owner) {
-      throw new NotFoundException(`Owner with id "${ownerId}" not found`);
-    }
+      if (!pet.currentOwnerId) {
+        throw new ConflictException('Pet has no owner assigned');
+      }
 
-    const adoption = await this.prisma.adoption.create({
-      data: {
-        petId,
-        ownerId,
-        adopterId,
-        notes,
-        status: AdoptionStatus.REQUESTED,
-      },
+      const activeAdoption = await tx.adoption.findFirst({
+        where: {
+          petId: dto.petId,
+          status: {
+            in: [
+              AdoptionStatus.REQUESTED,
+              AdoptionStatus.PENDING,
+              AdoptionStatus.APPROVED,
+              AdoptionStatus.ESCROW_FUNDED,
+            ],
+          },
+        },
+      });
+
+      if (activeAdoption) {
+        throw new ConflictException('Pet is not available for adoption');
+      }
+
+      const adoption = await tx.adoption.create({
+        data: {
+          petId: dto.petId,
+          ownerId: pet.currentOwnerId,
+          adopterId,
+          notes: dto.notes,
+          status: AdoptionStatus.REQUESTED,
+        },
+      });
+
+      this.logger.log(
+        `Adoption ${adoption.id} requested by adopter ${adopterId} for pet ${dto.petId}`,
+      );
+
+      await this.events.logEvent({
+        entityType: EventEntityType.ADOPTION,
+        entityId: adoption.id,
+        eventType: EventType.ADOPTION_REQUESTED,
+        actorId: adopterId,
+        payload: {
+          adoptionId: adoption.id,
+          petId: dto.petId,
+          ownerId: pet.currentOwnerId,
+          adopterId,
+        } satisfies Prisma.InputJsonValue,
+      });
+
+      return adoption;
     });
-
-    this.logger.log(
-      `Adoption ${adoption.id} requested by adopter ${adopterId} for pet ${petId}`,
-    );
-
-    await this.events.logEvent({
-      entityType: EventEntityType.ADOPTION,
-      entityId: adoption.id,
-      eventType: EventType.ADOPTION_REQUESTED,
-      actorId: adopterId,
-      payload: {
-        adoptionId: adoption.id,
-        petId,
-        ownerId,
-        adopterId,
-      } satisfies Prisma.InputJsonValue,
-    });
-
-    return adoption;
   }
 
   /**
