@@ -42,6 +42,7 @@ enum AdoptionStatus {
 }
 
 enum CustodyStatus {
+  PENDING
   ACTIVE
   RETURNED
   CANCELLED
