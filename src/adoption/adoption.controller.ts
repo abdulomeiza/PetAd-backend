@@ -24,6 +24,7 @@ import { DocumentsService } from '../documents/documents.service';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { EventsService } from '../events/events.service';
 import { EventEntityType, EventType } from '@prisma/client';
+import { AdoptionStatus } from './adoption-state-machine.service';
 
 interface AuthRequest extends Request {
   user: { userId: string; email: string; role: string; sub?: string };
@@ -68,9 +69,13 @@ async requestAdoption(
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   approveAdoption(@Req() req: AuthRequest, @Param('id') id: string) {
-    return this.adoptionService.updateAdoptionStatus(id, req.user.userId, {
-      status: 'APPROVED',
-    });
+    return this.adoptionService.updateAdoptionStatus(
+      id,
+      AdoptionStatus.APPROVED,
+      req.user.userId,
+      req.user.role as 'USER' | 'ADMIN' | 'SHELTER',
+      'Adoption approved by admin'
+    );
   }
 
   /**
@@ -82,9 +87,13 @@ async requestAdoption(
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   completeAdoption(@Req() req: AuthRequest, @Param('id') id: string) {
-    return this.adoptionService.updateAdoptionStatus(id, req.user.userId, {
-      status: 'COMPLETED',
-    });
+    return this.adoptionService.updateAdoptionStatus(
+      id,
+      AdoptionStatus.COMPLETED,
+      req.user.userId,
+      req.user.role as 'USER' | 'ADMIN' | 'SHELTER',
+      'Adoption completed by admin'
+    );
   }
 
   @Post(':id/documents')

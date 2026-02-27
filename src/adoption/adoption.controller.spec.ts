@@ -5,6 +5,7 @@ import { DocumentsService } from '../documents/documents.service';
 import { EventsService } from '../events/events.service';
 import { EventEntityType, EventType } from '@prisma/client';
 import { Request } from 'express';
+import { AdoptionStatus } from './adoption-state-machine.service';
 
 describe('AdoptionController', () => {
   let controller: AdoptionController;
@@ -51,7 +52,7 @@ describe('AdoptionController', () => {
   });
 
   it('should log an ADOPTION_APPROVED event when approving an adoption', async () => {
-    const req = { user: { userId: 'admin-123' } } as unknown as Request;
+    const req = { user: { userId: 'admin-123', role: 'ADMIN' } } as unknown as Request;
     const mockAdoption = { id: 'adoption-1', status: 'APPROVED' };
     mockAdoptionService.updateAdoptionStatus.mockResolvedValue(mockAdoption);
 
@@ -60,13 +61,15 @@ describe('AdoptionController', () => {
     expect(result).toEqual(mockAdoption);
     expect(mockAdoptionService.updateAdoptionStatus).toHaveBeenCalledWith(
       'adoption-1',
+      AdoptionStatus.APPROVED,
       'admin-123',
-      { status: 'APPROVED' },
+      'ADMIN',
+      'Adoption approved by admin'
     );
   });
 
   it('should throw a descriptive error when event logging fails', async () => {
-    const req = { user: { userId: 'admin-123' } } as unknown as Request;
+    const req = { user: { userId: 'admin-123', role: 'ADMIN' } } as unknown as Request;
     mockAdoptionService.updateAdoptionStatus.mockRejectedValue(
       new Error('Failed to record adoption approval event'),
     );

@@ -3,6 +3,8 @@ import { NotFoundException, ConflictException } from '@nestjs/common';
 import { AdoptionService } from './adoption.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
+import { PetAvailabilityService } from '../pets/pet-availability.service';
+import { AdoptionStateMachine } from './adoption-state-machine.service';
 import { EventType, EventEntityType, AdoptionStatus } from '@prisma/client';
 
 const ADOPTER_ID = 'adopter-uuid';
@@ -42,6 +44,15 @@ describe('AdoptionService', () => {
     logEvent: jest.fn(),
   };
 
+  const mockPetAvailability = {
+    logAvailabilityChange: jest.fn(),
+  };
+
+  const mockStateMachine = {
+    canTransition: jest.fn(),
+    transition: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -50,6 +61,8 @@ describe('AdoptionService', () => {
         AdoptionService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: EventsService, useValue: mockEvents },
+        { provide: PetAvailabilityService, useValue: mockPetAvailability },
+        { provide: AdoptionStateMachine, useValue: mockStateMachine },
       ],
     }).compile();
 
